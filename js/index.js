@@ -1,3 +1,4 @@
 import triangleProgram from './programs/triangle';
-
-triangleProgram.execute();
+import rectangleProgram from './programs/rectangle';
+//triangleProgram.execute();
+rectangleProgram.execute();
