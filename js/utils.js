@@ -8,6 +8,6 @@ const resizeCanvasToDisplaySize = (canvas) => {
     canvas.width = displayWidth;
     canvas.height = displayHeight;
   }
-}
+};
 
 export { resizeCanvasToDisplaySize };

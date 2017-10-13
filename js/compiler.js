@@ -8,15 +8,15 @@ const createShader = (gl, type, source) => {
 
   if (success) return shader;
 
-  console.log('Error creating shader: ', gl.getShaderInfoLog(shader));
+  console.warn('Error creating shader: ', gl.getShaderInfoLog(shader));
   gl.deleteShader(shader);
 };
 
-const createProgram = (gl, vertexShaders = [], fragmentShaders = []) => {
+const createProgram = (gl, vertexShader, fragmentShader) => {
   const program = gl.createProgram();
 
-  vertexShaders.forEach(vShader => gl.attachShader(program, vShader));
-  fragmentShaders.forEach(fShader => gl.attachShader(program, fShader));
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
 
   gl.linkProgram(program);
 
@@ -28,4 +28,4 @@ const createProgram = (gl, vertexShaders = [], fragmentShaders = []) => {
   gl.deleteProgram(program);
 };
 
-export { createShader, createProgram };
+export default { createShader, createProgram };
