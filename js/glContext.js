@@ -1,7 +1,7 @@
 let canvas;
 let gl;
 
-export default function(canvasId, options = {}) {
+export default function(canvasId, options = { alpha: false }) {
   if (gl) return gl;
 
   canvas = document.querySelector(canvasId);

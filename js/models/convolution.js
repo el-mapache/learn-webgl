@@ -18,6 +18,7 @@ function computeKernalWeight(kernal) {
 }
 
 export default function applyKernal(gl, program, kernal) {
+  // TODO: probably not performant to lookup these values each time we draw
   const kernalLocation = gl.getUniformLocation(program, 'u_kernal[0]');
   const kernalWeightLocation = gl.getUniformLocation(program, 'u_kernalWeight');
 
