@@ -14,7 +14,7 @@ const compiler = Compiler(gl);
 const colorLookupProgram = compiler.createProgram(
   PROGRAM_NAME,
   shaders.vertexShaderSource,
-  shaders.convolveFragmentShaderSource
+  shaders.medianFragmentShaderSource
 );
 
 function tick(callback) {
@@ -72,7 +72,7 @@ function init(video) {
   // get global alpha + blend settings
   const globalAlphaLocation = gl.getUniformLocation(colorLookupProgram, 'u_globalAlpha');
   const demultiplierLocation = gl.getUniformLocation(colorLookupProgram, 'u_demultiplier');
-
+//
   gl.enable(gl.BLEND);
   // this one gives the desired results. not 100 percent sure why!
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -84,7 +84,6 @@ function init(video) {
   const resolutionUniformLocation = gl.getUniformLocation(colorLookupProgram, 'u_resolution');
   gl.uniform2f(resolutionUniformLocation, gl.canvas.clientWidth, gl.canvas.clientHeight);
 
-  const defaultTexture = Texture.createTexture(gl);
   const textureCoordBuffer = gl.createBuffer();
 
   // Initialize a buffer with the description of how
@@ -118,7 +117,7 @@ function init(video) {
     gl.vertexAttribPointer(positionLocation, size, type, normalize, stride, offset);
   }
 
-  // Turn on the texturecord attribute
+  // Turn on the textureCoord attribute
   {
     const textureCoordLocation = gl.getAttribLocation(colorLookupProgram, 'a_textureCoord');
     gl.enableVertexAttribArray(textureCoordLocation);
@@ -137,10 +136,9 @@ function init(video) {
   const textureSizeLocation = gl.getUniformLocation(colorLookupProgram, 'u_textureSize');
 
   const srcTexture = Texture.createTexture(gl);
-  const { textures, frameBuffers } = framebuffers(gl, 2, video);
+  //const { textures, frameBuffers } = framebuffers(gl, 2, video);
 
   const setFrameBuffer = (fbuffer, width, height) => {
-    // bind nothing to the frame buffer to indicate that we don't want to use it any more
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbuffer, width, height);
     gl.uniform2f(resolutionUniformLocation, width, height);
     gl.viewport(0, 0, width, height);
@@ -160,32 +158,33 @@ function init(video) {
 
     gl.uniform2f(textureSizeLocation, video.height, video.width);
 
-    gl.uniform1f(globalAlphaLocation, 0.5);
-    gl.uniform1f(demultiplierLocation, 0.6);
+    // gl.uniform1f(globalAlphaLocation, 0.5);
+    // gl.uniform1f(demultiplierLocation, 0.6);
 
     Texture.updateTexture(gl, srcTexture, video);
 
     // Framebuffers aren't being displayed on the canvas, and don't need the y
     // position flipped.
-    gl.uniform1f(flipYLocation, 1);
-
-    effectsToApply.forEach((kernalName, index) => {
-      setFrameBuffer(frameBuffers[index % 2], gl.drawingBufferWidth, gl.drawingBufferHeight);
-      drawWithKernal(kernalName);
-      gl.bindTexture(gl.TEXTURE_2D, textures[index % 2]);
-    });
-
+    // gl.uniform1f(flipYLocation, 1);
+    //
+    // effectsToApply.forEach((kernalName, index) => {
+    //   setFrameBuffer(frameBuffers[index % 2], gl.drawingBufferWidth, gl.drawingBufferHeight);
+    //   drawWithKernal(kernalName);
+    //   gl.bindTexture(gl.TEXTURE_2D, textures[index % 2]);
+    // });
+    //
     gl.uniform1f(flipYLocation, -1);
+    // bind nothing to the frame buffer to indicate that we don't want to use it any more
     setFrameBuffer(null, video.width, video.height);
-    drawWithKernal('normal');
-
+    //drawWithKernal('normal');
+    drawRaw(gl);
     tick(draw.bind(null, gl, srcTexture, video));
   }
 
-  draw(gl, defaultTexture, video);
+  draw(gl, srcTexture, video);
 }
 
-function draw(offset = 0, count = 6) {
+function drawRaw(gl, offset = 0, count = 6) {
   gl.drawArrays(gl.TRIANGLES, offset, count);
 }
 
