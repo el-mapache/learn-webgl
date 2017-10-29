@@ -20,6 +20,7 @@ export default `
   #define halfKernalSize int(floor(float(kernalSize) / 2.))
   #define inverseHalfKernalSize -halfKernalSize
   #define matrixSize kernalSize * kernalSize
+  #define halfMatrixSize matrixSize / 2
 
   float pixels[matrixSize];
 
@@ -46,6 +47,44 @@ export default `
   	c.z = lum * 3. - c.y - c.x;
   	return c;
   }
+
+  function mergesortNR(length)
+{
+    var rght, wid, rend;
+    var i,j,m,t;
+
+    for (let k = 1; k < length; k *= 2 ) {
+        for (let left = 0; left + k < length; left += k*2 ) {
+            rght = left + k;
+            rend = rght + k;
+
+            if (rend > length) rend = length;
+
+            m = left; i = left; j = rght;
+
+  					for(; i < rght && j < rend;)
+						while (i < rght && j < rend) {
+                if (a[i] <= a[j]) {
+                    b[m] = a[i]; i++;
+                } else {
+                    b[m] = a[j]; j++;
+                }
+                m++;
+            }
+            while (i < rght) {
+                b[m]=a[i];
+                i++; m++;
+            }
+            while (j < rend) {
+                b[m]=a[j];
+                j++; m++;
+            }
+            for (m = left; m < rend; m++) {
+                a[m] = b[m];
+            }
+        }
+    }
+}
 
   // performance is really bad at kernalSize > 5
   void bubbleSort()
@@ -90,7 +129,7 @@ export default `
     }
 
     bubbleSort();
-    return unpack(pixels[matrixSize / 2]);
+    return unpack(pixels[halfMatrixSize]);
   }
 
   void main() {

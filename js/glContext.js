@@ -1,11 +1,9 @@
-let canvas;
 let gl;
 
 export default function(canvasId, options = { alpha: false }) {
-  if (gl) return gl;
-
-  canvas = document.querySelector(canvasId);
-  gl = canvas.getContext('webgl', options);
+  if (!gl) {
+    gl = document.querySelector(canvasId).getContext('webgl', options);
+  }
 
   return gl;
 };
