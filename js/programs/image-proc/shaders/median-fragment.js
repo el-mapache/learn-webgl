@@ -10,19 +10,13 @@ export default `
   // them in the main function
   #define OwnPosition v_textureCoord.xy
   #define OnePixel vec2(1.0, 1.0) / u_textureSize
-
   #define vec lowp vec3
-  #define toVec(x) x.rgb
 
-  // set up the kernals. this should be derived from a uniform value so the
-  // app's user can alter it during program execution
-  #define kernalSize 3
-  #define halfKernalSize int(floor(float(kernalSize) / 2.))
-  #define inverseHalfKernalSize -halfKernalSize
-  #define matrixSize kernalSize * kernalSize
-  #define halfMatrixSize matrixSize / 2
-
-  float pixels[matrixSize];
+  // define some math constants
+  #define OneThird 1./3.
+  #define ColorNormalize 1./255.
+  #define ColorNormalize2 1./256.
+  #define BlueNormalize 1./65536.
 
   float quantize(float x)
   {
@@ -32,110 +26,99 @@ export default `
 
   float pack(vec c)
   {
-  	float lum = (c.x+c.y+c.z)*(1./3.);
+  	float lum = (c.x+c.y+c.z) * OneThird;
   	// want to sort by luminance I guess so put that in MSB and quantize everything to 8 bit
   	// set up to sort a scalar value
-  	return quantize(c.x) + quantize(c.y)*256. + quantize(lum) * 65536.;
+  	return quantize(c.x) + quantize(c.y) * 256. + quantize(lum) * 65536.;
   }
 
   vec unpack(float x)
   {
-  	float lum = floor(x * (1./65536.)) * (1./255.);
+  	float lum = floor(x * BlueNormalize) * ColorNormalize;
   	vec3 c;
-  	c.x = floor(mod(x,256.)) 			* (1./255.);
-  	c.y = floor(mod(x*(1./256.),256.)) * (1./255.);
+  	c.x = floor(mod(x,256.)) * ColorNormalize;
+  	c.y = floor(mod(x * ColorNormalize2, 256.)) * ColorNormalize;
   	c.z = lum * 3. - c.y - c.x;
   	return c;
   }
 
-  function mergesortNR(length)
-{
-    var rght, wid, rend;
-    var i,j,m,t;
+  //Looks like 16 is too much for Windows!
+  //16/32 is pretty good on Mac, 64 works but slow.
+  #define SORT_SIZE	8
 
-    for (let k = 1; k < length; k *= 2 ) {
-        for (let left = 0; left + k < length; left += k*2 ) {
-            rght = left + k;
-            rend = rght + k;
+  float sort[SORT_SIZE];
 
-            if (rend > length) rend = length;
+  #define SWAP(a,b) { float t = max(sort[a],sort[b]); sort[a] = min(sort[a],sort[b]); sort[b] = t; }
 
-            m = left; i = left; j = rght;
+  //various sized sorting networks generated with this:
+  //http://pages.ripco.net/~jgamble/nw.html
 
-  					for(; i < rght && j < rend;)
-						while (i < rght && j < rend) {
-                if (a[i] <= a[j]) {
-                    b[m] = a[i]; i++;
-                } else {
-                    b[m] = a[j]; j++;
-                }
-                m++;
-            }
-            while (i < rght) {
-                b[m]=a[i];
-                i++; m++;
-            }
-            while (j < rend) {
-                b[m]=a[j];
-                j++; m++;
-            }
-            for (m = left; m < rend; m++) {
-                a[m] = b[m];
-            }
-        }
-    }
-}
+  #define SORT8 SWAP(0, 1);  SWAP(2, 3); SWAP(0, 2); SWAP(1, 3); SWAP(1, 2); SWAP(4, 5); SWAP(6, 7); SWAP(4, 6); SWAP(5, 7); SWAP(5, 6); SWAP(0, 4); SWAP(1, 5); SWAP(1, 4); SWAP(2, 6); SWAP(3, 7); SWAP(3, 6); SWAP(2, 4); SWAP(3, 5); SWAP(3, 4);
 
-  // performance is really bad at kernalSize > 5
-  void bubbleSort()
+  //There are 60 comparators in this network, grouped into 10 parallel operations.
+  #define SORT16 SWAP(0, 1); SWAP(2, 3); SWAP(4, 5); SWAP(6, 7); SWAP(8, 9); SWAP(10, 11); SWAP(12, 13); SWAP(14, 15); SWAP(0, 2); SWAP(4, 6); SWAP(8, 10); SWAP(12, 14); SWAP(1, 3); SWAP(5, 7); SWAP(9, 11); SWAP(13, 15); SWAP(0, 4); SWAP(8, 12); SWAP(1, 5); SWAP(9, 13); SWAP(2, 6); SWAP(10, 14); SWAP(3, 7); SWAP(11, 15); SWAP(0, 8); SWAP(1, 9); SWAP(2, 10); SWAP(3, 11); SWAP(4, 12); SWAP(5, 13); SWAP(6, 14); SWAP(7, 15); SWAP(5, 10); SWAP(6, 9); SWAP(3, 12); SWAP(13, 14); SWAP(7, 11); SWAP(1, 2); SWAP(4, 8); SWAP(1, 4); SWAP(7, 13); SWAP(2, 8); SWAP(11, 14); SWAP(2, 4); SWAP(5, 6); SWAP(9, 10); SWAP(11, 13); SWAP(3, 8); SWAP(7, 12); SWAP(6, 8); SWAP(10, 12); SWAP(3, 5); SWAP(7, 9); SWAP(3, 4); SWAP(5, 6); SWAP(7, 8); SWAP(9, 10); SWAP(11, 12); SWAP(6, 7); SWAP(8, 9);
+
+  //There are 191 comparators in this network, grouped into 15 parallel operations.
+  #define SORT32 SWAP(0, 16); SWAP(1, 17); SWAP(2, 18); SWAP(3, 19); SWAP(4, 20); SWAP(5, 21); SWAP(6, 22); SWAP(7, 23); SWAP(8, 24); SWAP(9, 25); SWAP(10, 26); SWAP(11, 27); SWAP(12, 28); SWAP(13, 29); SWAP(14, 30); SWAP(15, 31); SWAP(0, 8); SWAP(1, 9); SWAP(2, 10); SWAP(3, 11); SWAP(4, 12); SWAP(5, 13); SWAP(6, 14); SWAP(7, 15); SWAP(16, 24); SWAP(17, 25); SWAP(18, 26); SWAP(19, 27); SWAP(20, 28); SWAP(21, 29); SWAP(22, 30); SWAP(23, 31); SWAP(8, 16); SWAP(9, 17); SWAP(10, 18); SWAP(11, 19); SWAP(12, 20); SWAP(13, 21); SWAP(14, 22); SWAP(15, 23); SWAP(0, 4); SWAP(1, 5); SWAP(2, 6); SWAP(3, 7); SWAP(24, 28); SWAP(25, 29); SWAP(26, 30); SWAP(27, 31); SWAP(8, 12); SWAP(9, 13); SWAP(10, 14); SWAP(11, 15); SWAP(16, 20); SWAP(17, 21); SWAP(18, 22); SWAP(19, 23); SWAP(0, 2); SWAP(1, 3); SWAP(28, 30); SWAP(29, 31); SWAP(4, 16); SWAP(5, 17); SWAP(6, 18); SWAP(7, 19); SWAP(12, 24); SWAP(13, 25); SWAP(14, 26); SWAP(15, 27); SWAP(0, 1); SWAP(30, 31); SWAP(4, 8); SWAP(5, 9); SWAP(6, 10); SWAP(7, 11); SWAP(12, 16); SWAP(13, 17); SWAP(14, 18); SWAP(15, 19); SWAP(20, 24); SWAP(21, 25); SWAP(22, 26); SWAP(23, 27); SWAP(4, 6); SWAP(5, 7); SWAP(8, 10); SWAP(9, 11); SWAP(12, 14); SWAP(13, 15); SWAP(16, 18); SWAP(17, 19); SWAP(20, 22); SWAP(21, 23); SWAP(24, 26); SWAP(25, 27); SWAP(2, 16); SWAP(3, 17); SWAP(6, 20); SWAP(7, 21); SWAP(10, 24); SWAP(11, 25); SWAP(14, 28); SWAP(15, 29); SWAP(2, 8); SWAP(3, 9); SWAP(6, 12); SWAP(7, 13); SWAP(10, 16); SWAP(11, 17); SWAP(14, 20); SWAP(15, 21); SWAP(18, 24); SWAP(19, 25); SWAP(22, 28); SWAP(23, 29); SWAP(2, 4); SWAP(3, 5); SWAP(6, 8); SWAP(7, 9); SWAP(10, 12); SWAP(11, 13); SWAP(14, 16); SWAP(15, 17); SWAP(18, 20); SWAP(19, 21); SWAP(22, 24); SWAP(23, 25); SWAP(26, 28); SWAP(27, 29); SWAP(2, 3); SWAP(4, 5); SWAP(6, 7); SWAP(8, 9); SWAP(10, 11); SWAP(12, 13); SWAP(14, 15); SWAP(16, 17); SWAP(18, 19); SWAP(20, 21); SWAP(22, 23); SWAP(24, 25); SWAP(26, 27); SWAP(28, 29); SWAP(1, 16); SWAP(3, 18); SWAP(5, 20); SWAP(7, 22); SWAP(9, 24); SWAP(11, 26); SWAP(13, 28); SWAP(15, 30); SWAP(1, 8); SWAP(3, 10); SWAP(5, 12); SWAP(7, 14); SWAP(9, 16); SWAP(11, 18); SWAP(13, 20); SWAP(15, 22); SWAP(17, 24); SWAP(19, 26); SWAP(21, 28); SWAP(23, 30); SWAP(1, 4); SWAP(3, 6); SWAP(5, 8); SWAP(7, 10); SWAP(9, 12); SWAP(11, 14); SWAP(13, 16); SWAP(15, 18); SWAP(17, 20); SWAP(19, 22); SWAP(21, 24); SWAP(23, 26); SWAP(25, 28); SWAP(27, 30); SWAP(1, 2); SWAP(3, 4); SWAP(5, 6); SWAP(7, 8); SWAP(9, 10); SWAP(11, 12); SWAP(13, 14); SWAP(15, 16); SWAP(17, 18); SWAP(19, 20); SWAP(21, 22); SWAP(23, 24); SWAP(25, 26); SWAP(27, 28); SWAP(29, 30);
+
+  //There are 543 comparators in this network, grouped into 21 parallel operations.
+  #define SORT64 SWAP(0, 32); SWAP(1, 33); SWAP(2, 34); SWAP(3, 35); SWAP(4, 36); SWAP(5, 37); SWAP(6, 38); SWAP(7, 39); SWAP(8, 40); SWAP(9, 41); SWAP(10, 42); SWAP(11, 43); SWAP(12, 44); SWAP(13, 45); SWAP(14, 46); SWAP(15, 47); SWAP(16, 48); SWAP(17, 49); SWAP(18, 50); SWAP(19, 51); SWAP(20, 52); SWAP(21, 53); SWAP(22, 54); SWAP(23, 55); SWAP(24, 56); SWAP(25, 57); SWAP(26, 58); SWAP(27, 59); SWAP(28, 60); SWAP(29, 61); SWAP(30, 62); SWAP(31, 63); SWAP(0, 16); SWAP(1, 17); SWAP(2, 18); SWAP(3, 19); SWAP(4, 20); SWAP(5, 21); SWAP(6, 22); SWAP(7, 23); SWAP(8, 24); SWAP(9, 25); SWAP(10, 26); SWAP(11, 27); SWAP(12, 28); SWAP(13, 29); SWAP(14, 30); SWAP(15, 31); SWAP(32, 48); SWAP(33, 49); SWAP(34, 50); SWAP(35, 51); SWAP(36, 52); SWAP(37, 53); SWAP(38, 54); SWAP(39, 55); SWAP(40, 56); SWAP(41, 57); SWAP(42, 58); SWAP(43, 59); SWAP(44, 60); SWAP(45, 61); SWAP(46, 62); SWAP(47, 63); SWAP(16, 32); SWAP(17, 33); SWAP(18, 34); SWAP(19, 35); SWAP(20, 36); SWAP(21, 37); SWAP(22, 38); SWAP(23, 39); SWAP(24, 40); SWAP(25, 41); SWAP(26, 42); SWAP(27, 43); SWAP(28, 44); SWAP(29, 45); SWAP(30, 46); SWAP(31, 47); SWAP(0, 8); SWAP(1, 9); SWAP(2, 10); SWAP(3, 11); SWAP(4, 12); SWAP(5, 13); SWAP(6, 14); SWAP(7, 15); SWAP(48, 56); SWAP(49, 57); SWAP(50, 58); SWAP(51, 59); SWAP(52, 60); SWAP(53, 61); SWAP(54, 62); SWAP(55, 63); SWAP(16, 24); SWAP(17, 25); SWAP(18, 26); SWAP(19, 27); SWAP(20, 28); SWAP(21, 29); SWAP(22, 30); SWAP(23, 31); SWAP(32, 40); SWAP(33, 41); SWAP(34, 42); SWAP(35, 43); SWAP(36, 44); SWAP(37, 45); SWAP(38, 46); SWAP(39, 47); SWAP(0, 4); SWAP(1, 5); SWAP(2, 6); SWAP(3, 7); SWAP(56, 60); SWAP(57, 61); SWAP(58, 62); SWAP(59, 63); SWAP(8, 32); SWAP(9, 33); SWAP(10, 34); SWAP(11, 35); SWAP(12, 36); SWAP(13, 37); SWAP(14, 38); SWAP(15, 39); SWAP(24, 48); SWAP(25, 49); SWAP(26, 50); SWAP(27, 51); SWAP(28, 52); SWAP(29, 53); SWAP(30, 54); SWAP(31, 55); SWAP(0, 2); SWAP(1, 3); SWAP(60, 62); SWAP(61, 63); SWAP(8, 16); SWAP(9, 17); SWAP(10, 18); SWAP(11, 19); SWAP(12, 20); SWAP(13, 21); SWAP(14, 22); SWAP(15, 23); SWAP(24, 32); SWAP(25, 33); SWAP(26, 34); SWAP(27, 35); SWAP(28, 36); SWAP(29, 37); SWAP(30, 38); SWAP(31, 39); SWAP(40, 48); SWAP(41, 49); SWAP(42, 50); SWAP(43, 51); SWAP(44, 52); SWAP(45, 53); SWAP(46, 54); SWAP(47, 55); SWAP(0, 1); SWAP(62, 63); SWAP(8, 12); SWAP(9, 13); SWAP(10, 14); SWAP(11, 15); SWAP(16, 20); SWAP(17, 21); SWAP(18, 22); SWAP(19, 23); SWAP(24, 28); SWAP(25, 29); SWAP(26, 30); SWAP(27, 31); SWAP(32, 36); SWAP(33, 37); SWAP(34, 38); SWAP(35, 39); SWAP(40, 44); SWAP(41, 45); SWAP(42, 46); SWAP(43, 47); SWAP(48, 52); SWAP(49, 53); SWAP(50, 54); SWAP(51, 55); SWAP(4, 32); SWAP(5, 33); SWAP(6, 34); SWAP(7, 35); SWAP(12, 40); SWAP(13, 41); SWAP(14, 42); SWAP(15, 43); SWAP(20, 48); SWAP(21, 49); SWAP(22, 50); SWAP(23, 51); SWAP(28, 56); SWAP(29, 57); SWAP(30, 58); SWAP(31, 59); SWAP(4, 16); SWAP(5, 17); SWAP(6, 18); SWAP(7, 19); SWAP(12, 24); SWAP(13, 25); SWAP(14, 26); SWAP(15, 27); SWAP(20, 32); SWAP(21, 33); SWAP(22, 34); SWAP(23, 35); SWAP(28, 40); SWAP(29, 41); SWAP(30, 42); SWAP(31, 43); SWAP(36, 48); SWAP(37, 49); SWAP(38, 50); SWAP(39, 51); SWAP(44, 56); SWAP(45, 57); SWAP(46, 58); SWAP(47, 59); SWAP(4, 8); SWAP(5, 9); SWAP(6, 10); SWAP(7, 11); SWAP(12, 16); SWAP(13, 17); SWAP(14, 18); SWAP(15, 19); SWAP(20, 24); SWAP(21, 25); SWAP(22, 26); SWAP(23, 27); SWAP(28, 32); SWAP(29, 33); SWAP(30, 34); SWAP(31, 35); SWAP(36, 40); SWAP(37, 41); SWAP(38, 42); SWAP(39, 43); SWAP(44, 48); SWAP(45, 49); SWAP(46, 50); SWAP(47, 51); SWAP(52, 56); SWAP(53, 57); SWAP(54, 58); SWAP(55, 59); SWAP(4, 6); SWAP(5, 7); SWAP(8, 10); SWAP(9, 11); SWAP(12, 14); SWAP(13, 15); SWAP(16, 18); SWAP(17, 19); SWAP(20, 22); SWAP(21, 23); SWAP(24, 26); SWAP(25, 27); SWAP(28, 30); SWAP(29, 31); SWAP(32, 34); SWAP(33, 35); SWAP(36, 38); SWAP(37, 39); SWAP(40, 42); SWAP(41, 43); SWAP(44, 46); SWAP(45, 47); SWAP(48, 50); SWAP(49, 51); SWAP(52, 54); SWAP(53, 55); SWAP(56, 58); SWAP(57, 59); SWAP(2, 32); SWAP(3, 33); SWAP(6, 36); SWAP(7, 37); SWAP(10, 40); SWAP(11, 41); SWAP(14, 44); SWAP(15, 45); SWAP(18, 48); SWAP(19, 49); SWAP(22, 52); SWAP(23, 53); SWAP(26, 56); SWAP(27, 57); SWAP(30, 60); SWAP(31, 61); SWAP(2, 16); SWAP(3, 17); SWAP(6, 20); SWAP(7, 21); SWAP(10, 24); SWAP(11, 25); SWAP(14, 28); SWAP(15, 29); SWAP(18, 32); SWAP(19, 33); SWAP(22, 36); SWAP(23, 37); SWAP(26, 40); SWAP(27, 41); SWAP(30, 44); SWAP(31, 45); SWAP(34, 48); SWAP(35, 49); SWAP(38, 52); SWAP(39, 53); SWAP(42, 56); SWAP(43, 57); SWAP(46, 60); SWAP(47, 61); SWAP(2, 8); SWAP(3, 9); SWAP(6, 12); SWAP(7, 13); SWAP(10, 16); SWAP(11, 17); SWAP(14, 20); SWAP(15, 21); SWAP(18, 24); SWAP(19, 25); SWAP(22, 28); SWAP(23, 29); SWAP(26, 32); SWAP(27, 33); SWAP(30, 36); SWAP(31, 37); SWAP(34, 40); SWAP(35, 41); SWAP(38, 44); SWAP(39, 45); SWAP(42, 48); SWAP(43, 49); SWAP(46, 52); SWAP(47, 53); SWAP(50, 56); SWAP(51, 57); SWAP(54, 60); SWAP(55, 61); SWAP(2, 4); SWAP(3, 5); SWAP(6, 8); SWAP(7, 9); SWAP(10, 12); SWAP(11, 13); SWAP(14, 16); SWAP(15, 17); SWAP(18, 20); SWAP(19, 21); SWAP(22, 24); SWAP(23, 25); SWAP(26, 28); SWAP(27, 29); SWAP(30, 32); SWAP(31, 33); SWAP(34, 36); SWAP(35, 37); SWAP(38, 40); SWAP(39, 41); SWAP(42, 44); SWAP(43, 45); SWAP(46, 48); SWAP(47, 49); SWAP(50, 52); SWAP(51, 53); SWAP(54, 56); SWAP(55, 57); SWAP(58, 60); SWAP(59, 61); SWAP(2, 3); SWAP(4, 5); SWAP(6, 7); SWAP(8, 9); SWAP(10, 11); SWAP(12, 13); SWAP(14, 15); SWAP(16, 17); SWAP(18, 19); SWAP(20, 21); SWAP(22, 23); SWAP(24, 25); SWAP(26, 27); SWAP(28, 29); SWAP(30, 31); SWAP(32, 33); SWAP(34, 35); SWAP(36, 37); SWAP(38, 39); SWAP(40, 41); SWAP(42, 43); SWAP(44, 45); SWAP(46, 47); SWAP(48, 49); SWAP(50, 51); SWAP(52, 53); SWAP(54, 55); SWAP(56, 57); SWAP(58, 59); SWAP(60, 61); SWAP(1, 32); SWAP(3, 34); SWAP(5, 36); SWAP(7, 38); SWAP(9, 40); SWAP(11, 42); SWAP(13, 44); SWAP(15, 46); SWAP(17, 48); SWAP(19, 50); SWAP(21, 52); SWAP(23, 54); SWAP(25, 56); SWAP(27, 58); SWAP(29, 60); SWAP(31, 62); SWAP(1, 16); SWAP(3, 18); SWAP(5, 20); SWAP(7, 22); SWAP(9, 24); SWAP(11, 26); SWAP(13, 28); SWAP(15, 30); SWAP(17, 32); SWAP(19, 34); SWAP(21, 36); SWAP(23, 38); SWAP(25, 40); SWAP(27, 42); SWAP(29, 44); SWAP(31, 46); SWAP(33, 48); SWAP(35, 50); SWAP(37, 52); SWAP(39, 54); SWAP(41, 56); SWAP(43, 58); SWAP(45, 60); SWAP(47, 62); SWAP(1, 8); SWAP(3, 10); SWAP(5, 12); SWAP(7, 14); SWAP(9, 16); SWAP(11, 18); SWAP(13, 20); SWAP(15, 22); SWAP(17, 24); SWAP(19, 26); SWAP(21, 28); SWAP(23, 30); SWAP(25, 32); SWAP(27, 34); SWAP(29, 36); SWAP(31, 38); SWAP(33, 40); SWAP(35, 42); SWAP(37, 44); SWAP(39, 46); SWAP(41, 48); SWAP(43, 50); SWAP(45, 52); SWAP(47, 54); SWAP(49, 56); SWAP(51, 58); SWAP(53, 60); SWAP(55, 62); SWAP(1, 4); SWAP(3, 6); SWAP(5, 8); SWAP(7, 10); SWAP(9, 12); SWAP(11, 14); SWAP(13, 16); SWAP(15, 18); SWAP(17, 20); SWAP(19, 22); SWAP(21, 24); SWAP(23, 26); SWAP(25, 28); SWAP(27, 30); SWAP(29, 32); SWAP(31, 34); SWAP(33, 36); SWAP(35, 38); SWAP(37, 40); SWAP(39, 42); SWAP(41, 44); SWAP(43, 46); SWAP(45, 48); SWAP(47, 50); SWAP(49, 52); SWAP(51, 54); SWAP(53, 56); SWAP(55, 58); SWAP(57, 60); SWAP(59, 62); SWAP(1, 2); SWAP(3, 4); SWAP(5, 6); SWAP(7, 8); SWAP(9, 10); SWAP(11, 12); SWAP(13, 14); SWAP(15, 16); SWAP(17, 18); SWAP(19, 20); SWAP(21, 22); SWAP(23, 24); SWAP(25, 26); SWAP(27, 28); SWAP(29, 30); SWAP(31, 32); SWAP(33, 34); SWAP(35, 36); SWAP(37, 38); SWAP(39, 40); SWAP(41, 42); SWAP(43, 44); SWAP(45, 46); SWAP(47, 48); SWAP(49, 50); SWAP(51, 52); SWAP(53, 54); SWAP(55, 56); SWAP(57, 58); SWAP(59, 60); SWAP(61, 62);
+
+  void Sort()
   {
-    bool swapped = true;
-    int j = 0;
-    float tmp;
-    for (int c = 0; c < matrixSize; c--)
+    #if (SORT_SIZE == 8)
+    SORT8
+    #endif
+    #if (SORT_SIZE == 16)
+    SORT16
+    #endif
+    #if (SORT_SIZE == 32)
+    SORT32
+    #endif
+    #if (SORT_SIZE == 64)
+    SORT64
+    #endif
+  }
+
+
+  float medians[SORT_SIZE];
+
+  #define halfSortSize SORT_SIZE / 2
+  #define OwnPosition v_textureCoord.xy
+  #define OnePixel vec2(1.0, 1.0) / u_textureSize
+
+  void main()
+  {
+    //do a bunch of 1D sorts on X
+    for (int j=0; j < SORT_SIZE; j++)
     {
-      if (!swapped)
+      //gather all X the texels for this Y
+      for (int i=0; i < SORT_SIZE; i++)
       {
-        break;
-      }
-      swapped = false;
-      j++;
-      for (int i = 0; i < matrixSize; i++)
-      {
-          if (i >= matrixSize - j)
-              break;
-          if (pixels[i] > pixels[i + 1])
-          {
-              tmp = pixels[i];
-              pixels[i] = pixels[i + 1];
-              pixels[i + 1] = tmp;
-              swapped = true;
-          }
-      }
-    }
-  }
+        vec2 uv = OwnPosition + vec2(i, j) * OnePixel;
+        float c = pack(texture2D(u_image, uv).xyz);
 
-  vec threeByMatrix(vec2 pixelSize)
-  {
-    // Loop through the points of the window that surround the current texel
-    for(int x = inverseHalfKernalSize; x <= halfKernalSize; ++x) {
-      for(int y = inverseHalfKernalSize; y <= halfKernalSize; ++y) {
-        vec2 offset = vec2(float(x), float(y));
-
-        // since we start at negative offset and GLSL doesn't allow for
-        // a count variable, we have to do a little math to derive the correct index
-        pixels[(x + 1) * kernalSize + (y + 1)] = pack(toVec(texture2D(u_image, OwnPosition + offset * pixelSize)));
+        sort[j * SORT_SIZE + i] = c;
       }
+
+      Sort();
+
+      //keep the median from X
+      float m = sort[halfSortSize];
+
+
+      medians[j] = m;
     }
 
-    bubbleSort();
-    return unpack(pixels[halfMatrixSize]);
-  }
+    //sort the medians
+    for (int i=0; i<SORT_SIZE; i++)
+    {
+      sort[i]=medians[i];
+    }
 
-  void main() {
-    vec medianColor = threeByMatrix(OnePixel);
-    vec4 medianVector = vec4(medianColor.rgb, 1.0);
+    Sort();
 
-    gl_FragColor = medianVector;
+    //median of medians is pretty near the true median
+    gl_FragColor = vec4(unpack(sort[halfSortSize]), 1.0);
   }
 `;
