@@ -18,35 +18,13 @@ export default `
   #define ColorNormalize2 1./256.
   #define BlueNormalize 1./65536.
 
-  float quantize(float x)
-  {
-  	x = clamp(x, 0., 1.);
-  	return floor(x * 255.);
-  }
-
-  float pack(vec c)
-  {
-  	float lum = (c.x+c.y+c.z) * OneThird;
-  	// want to sort by luminance I guess so put that in MSB and quantize everything to 8 bit
-  	// set up to sort a scalar value
-  	return quantize(c.x) + quantize(c.y) * 256. + quantize(lum) * 65536.;
-  }
-
-  vec unpack(float x)
-  {
-  	float lum = floor(x * BlueNormalize) * ColorNormalize;
-  	vec3 c;
-  	c.x = floor(mod(x,256.)) * ColorNormalize;
-  	c.y = floor(mod(x * ColorNormalize2, 256.)) * ColorNormalize;
-  	c.z = lum * 3. - c.y - c.x;
-  	return c;
-  }
-
   //Looks like 16 is too much for Windows!
   //16/32 is pretty good on Mac, 64 works but slow.
   #define SORT_SIZE	8
+  #define halfSortSize SORT_SIZE / 2
 
   float sort[SORT_SIZE];
+  float medians[SORT_SIZE];
 
   #define SWAP(a,b) { float t = max(sort[a],sort[b]); sort[a] = min(sort[a],sort[b]); sort[b] = t; }
 
@@ -80,12 +58,29 @@ export default `
     #endif
   }
 
+  float quantize(float x)
+  {
+  	x = clamp(x, 0., 1.);
+  	return floor(x * 255.);
+  }
 
-  float medians[SORT_SIZE];
+  float pack(vec c)
+  {
+  	float lum = (c.x+c.y+c.z) * OneThird;
+  	// want to sort by luminance I guess so put that in MSB and quantize everything to 8 bit
+  	// set up to sort a scalar value
+  	return quantize(c.x) + quantize(c.y) * 256. + quantize(lum) * 65536.;
+  }
 
-  #define halfSortSize SORT_SIZE / 2
-  #define OwnPosition v_textureCoord.xy
-  #define OnePixel vec2(1.0, 1.0) / u_textureSize
+  vec unpack(float x)
+  {
+  	float lum = floor(x * BlueNormalize) * ColorNormalize;
+  	vec3 c;
+  	c.x = floor(mod(x,256.)) * ColorNormalize;
+  	c.y = floor(mod(x * ColorNormalize2, 256.)) * ColorNormalize;
+  	c.z = lum * 3. - c.y - c.x;
+  	return c;
+  }
 
   void main()
   {
@@ -98,7 +93,7 @@ export default `
         vec2 uv = OwnPosition + vec2(i, j) * OnePixel;
         float c = pack(texture2D(u_image, uv).xyz);
 
-        sort[j * SORT_SIZE + i] = c;
+        sort[i] = c;
       }
 
       Sort();
@@ -106,14 +101,13 @@ export default `
       //keep the median from X
       float m = sort[halfSortSize];
 
-
       medians[j] = m;
     }
 
     //sort the medians
-    for (int i=0; i<SORT_SIZE; i++)
+    for (int i=0; i < SORT_SIZE; i++)
     {
-      sort[i]=medians[i];
+      sort[i] = medians[i];
     }
 
     Sort();

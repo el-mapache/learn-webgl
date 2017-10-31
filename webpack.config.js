@@ -9,6 +9,13 @@ module.exports = {
       path.resolve('./js')
     ]
   },
+  module: {
+    loaders: [{
+      test: /\.js$/,
+      exclude: /(node_modules)/,
+      loader: 'babel-loader'
+    }]
+  },
   output: {
     path: __dirname + '/build',
     filename: 'output.js'

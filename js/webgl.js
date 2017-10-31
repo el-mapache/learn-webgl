@@ -1,7 +1,8 @@
 import compiler from './compiler';
 import { resizeCanvasToDisplaySize } from 'utils';
 
-const programs = {}
+const programs = {};
+let currentProgram = null;
 
 const WebGl = (gl) => {
   return {
@@ -23,7 +24,8 @@ const WebGl = (gl) => {
     },
 
     useProgram(name) {
-      gl.useProgram(programs[name]);
+      currentProgram = programs[name];
+      gl.useProgram(currentProgram);
     },
 
     resizeCanvas(gl) {
@@ -38,8 +40,16 @@ const WebGl = (gl) => {
       gl.clear(gl.COLOR_BUFFER_BIT);
     },
 
+    get programs() {
+      return programs;
+    },
+
+    get currentProgram() {
+      return currentProgram;
+    },
+
     setSize() {
-      
+
     }
   };
 };

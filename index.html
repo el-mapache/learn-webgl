@@ -2,6 +2,10 @@
 <html>
   <head>
     <style>
+      html, body {
+        height: 100%;
+        width: 100%;
+      }
       canvas {
         border: 4px solid #131313;
         height: 400px;
@@ -10,7 +14,9 @@
     </style>
   </head>
   <body>
-    <canvas id="canvas"></canvas>
+    <div style="height: 100%; display: flex; justify-content: center; align-items: center">
+      <canvas id="canvas"></canvas>
+    </div>
     <script src="build/output.js"></script>
   </body>
 </html>
