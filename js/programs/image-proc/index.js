@@ -4,27 +4,23 @@ import shaders from './shaders';
 import videoInterface from 'video';
 import Texture from 'texture';
 import framebuffers from 'framebuffers';
-const PROGRAM_NAME = 'medianFilter';
+
+const PROGRAM_NAME = 'colorLookup';
 
 const gl = glContext('#canvas');
 const compiler = Compiler(gl);
 
-const medianFilterProgram = compiler.createProgram(
+const colorLookupProgram = compiler.createProgram(
   PROGRAM_NAME,
-  shaders.vertexShaderSource,
-  shaders.medianFragmentShaderSource
-);
-
-const convolutionProgram = compiler.createProgram(
-  'convolver',
   shaders.vertexShaderSource,
   shaders.convolveFragmentShaderSource
 );
 
-/** define all the locatiokns here so the entire program can see them **/
-let positionLocation, textureCoordLocation, globalAlphaLocation,
-    demultiplierLocation, kernalLocation, kernalWeightLocation,
-    resolutionUniformLocation, flipYLocation, textureSizeLocation;
+const medianProgram = compiler.createProgram(
+  'median',
+  shaders.vertexShaderSource,
+  shaders.medianFragmentShaderSource
+);
 
 function tick(callback) {
   window.requestAnimationFrame(callback);
@@ -61,6 +57,10 @@ const effectsToApply = [
   "unsharpen"
 ];
 
+let globalAlphaLocation, demultiplierLocation, kernalLocation,
+    kernalWeightLocation, resolutionUniformLocation, positionLocation,
+    textureCoordLocation, flipYLocation, textureSizeLocation;
+
 navigator.mediaDevices.getUserMedia({ audio: false, video: true })
   .then(mediaStream => {
     const urlSrc = URL.createObjectURL(mediaStream);
@@ -73,35 +73,26 @@ navigator.mediaDevices.getUserMedia({ audio: false, video: true })
     .catch(err => console.warn(err));
 
 function init(video) {
-  // Create all buffers and bind to vertex shader uniforms/attributes
-  // Since all programs will share a vertex shader this should be fine!
   const srcTexture = Texture.createTexture(gl);
-  const { textures, frameBuffers } = framebuffers(gl, 2, video);
-  const textureCoordBuffer = gl.createBuffer();
+  // In this case, the position buffer is the size of the entire canvas.
   const positionBuffer = createPositionBuffer(gl, 0, 0, video.height, video.width);
+  const textureCoordBuffer = gl.createBuffer();
+  const { textures, frameBuffers } = framebuffers(gl, 2, video);
 
-  //enableBlending(gl);
+  function bindStuff() {
+    // get global alpha + blend settings
+    globalAlphaLocation = gl.getUniformLocation(compiler.currentProgram, 'u_globalAlpha');
+    demultiplierLocation = gl.getUniformLocation(compiler.currentProgram, 'u_demultiplier');
+    // get kernal uniform locations
+    kernalLocation = gl.getUniformLocation(compiler.currentProgram, 'u_kernal[0]');
+    kernalWeightLocation = gl.getUniformLocation(compiler.currentProgram, 'u_kernalWeight');
+    flipYLocation = gl.getUniformLocation(compiler.currentProgram, 'u_flipY');
+    textureSizeLocation = gl.getUniformLocation(compiler.currentProgram, 'u_textureSize');
 
-  function applyKernel(gl, kernal) {
-    gl.uniform1fv(kernalLocation, kernal);
-    gl.uniform1f(kernalWeightLocation, computeKernalWeight(kernal));
-  }
+    // set the resolution
+    resolutionUniformLocation = gl.getUniformLocation(compiler.currentProgram, 'u_resolution');
+    gl.uniform2f(resolutionUniformLocation, gl.canvas.clientWidth, gl.canvas.clientHeight);
 
-  const setFrameBuffer = (fbuffer, width, height) => {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbuffer, width, height);
-    gl.uniform2f(resolutionUniformLocation, width, height);
-    gl.viewport(0, 0, width, height);
-  };
-
-  const drawWithKernal = (kname) => {
-    applyKernel(gl, KERNALS[kname]);
-    const offset = 0;
-    const count = 6;
-
-    gl.drawArrays(gl.TRIANGLES, offset, count);
-  }
-
-  function bindEverything() {
     // Initialize a buffer with the description of how
     // to draw the primitive that will make up the texture.
     // In this case two triangles are used.
@@ -118,92 +109,94 @@ function init(video) {
     }
 
     {  // Bind the position buffer.
-      // In this case, the position buffer is the size of the entire canvas.
-
       positionLocation = gl.getAttribLocation(compiler.currentProgram, "a_position");
       // Turn on the position attribute
       gl.enableVertexAttribArray(positionLocation);
       // Bind the position buffer.
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
       // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-      const size = 2;          // 2 components per iteration
-      const type = gl.FLOAT;   // the data is 32bit floats
-      const normalize = false; // don't normalize the data
-      const stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
-      const offset = 0;        // start at the beginning of the buffer
+      var size = 2;          // 2 components per iteration
+      var type = gl.FLOAT;   // the data is 32bit floats
+      var normalize = false; // don't normalize the data
+      var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+      var offset = 0;        // start at the beginning of the buffer
       gl.vertexAttribPointer(positionLocation, size, type, normalize, stride, offset);
     }
 
-    // Turn on the textureCoord attribute
+    // Turn on the texturecord attribute
     {
       textureCoordLocation = gl.getAttribLocation(compiler.currentProgram, 'a_textureCoord');
       gl.enableVertexAttribArray(textureCoordLocation);
       // Bind the textureCoord buffer.
       gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
       // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-      const size = 2;          // 2 components per iteration
-      const type = gl.FLOAT;   // the data is 32bit floats
-      const normalize = false; // don't normalize the data
-      const stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
-      const offset = 0;        // start at the beginning of the buffer
+      var size = 2;          // 2 components per iteration
+      var type = gl.FLOAT;   // the data is 32bit floats
+      var normalize = false; // don't normalize the data
+      var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+      var offset = 0;        // start at the beginning of the buffer
       gl.vertexAttribPointer(textureCoordLocation, size, type, normalize, stride, offset);
     }
 
-    // get global alpha + blend settings
-    globalAlphaLocation = gl.getUniformLocation(compiler.currentProgram, 'u_globalAlpha');
-    demultiplierLocation = gl.getUniformLocation(compiler.currentProgram, 'u_demultiplier');
-
-    kernalLocation = gl.getUniformLocation(compiler.currentProgram, 'u_kernal[0]');
-    kernalWeightLocation = gl.getUniformLocation(compiler.currentProgram, 'u_kernalWeight');
-
-    // set the resolution
-    resolutionUniformLocation = gl.getUniformLocation(compiler.currentProgram, 'u_resolution');
-    gl.uniform2f(resolutionUniformLocation, gl.canvas.clientWidth, gl.canvas.clientHeight);
-
-    flipYLocation = gl.getUniformLocation(compiler.currentProgram, 'u_flipY');
-    textureSizeLocation = gl.getUniformLocation(compiler.currentProgram, 'u_textureSize');
     gl.uniform2f(textureSizeLocation, video.height, video.width);
 
-    gl.uniform1f(globalAlphaLocation, 0.99);
-    gl.uniform1f(demultiplierLocation, 0.9);
+    gl.uniform1f(globalAlphaLocation, 0.5);
+    gl.uniform1f(demultiplierLocation, 0.7);
   }
 
-  function drawScene(gl, texture, video) {
+  function setFrameBuffer(fbuffer, width, height) {
+    // bind nothing to the frame buffer to indicate that we don't want to use it any more
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbuffer, width, height);
+    gl.uniform2f(resolutionUniformLocation, width, height);
+    gl.viewport(0, 0, width, height);
+  }
+
+  function applyKernel(gl, kernal) {
+    gl.uniform1fv(kernalLocation, kernal);
+    gl.uniform1f(kernalWeightLocation, computeKernalWeight(kernal));
+  }
+
+  function drawWithKernal(kname) {
+    applyKernel(gl, KERNALS[kname]);
+    drawRaw();
+  }
+
+  function draw(gl, texture, video) {
     compiler.clearDrawingSurface();
-    compiler.useProgram('convolver');
-    bindEverything();
+    compiler.useProgram('median');
+    bindStuff();
+    // compiler.useProgram(PROGRAM_NAME);
+    // bindStuff();
 
     Texture.updateTexture(gl, srcTexture, video);
-
-    /**
-     * Framebuffers aren't being displayed on the canvas, and don't need the y
-     * position flipped.
-    **/
+    // Framebuffers aren't being displayed on the canvas, and don't need the y
+    // position flipped.
     gl.uniform1f(flipYLocation, 1);
 
-    effectsToApply.forEach((kernalName, index) => {
-      setFrameBuffer(frameBuffers[index % 2], gl.drawingBufferWidth, gl.drawingBufferHeight);
-      drawWithKernal(kernalName);
-      gl.bindTexture(gl.TEXTURE_2D, textures[index % 2]);
-    });
-    //
+    // effectsToApply.forEach((kernalName, index) => {
+    //   setFrameBuffer(frameBuffers[index % 2], gl.drawingBufferWidth, gl.drawingBufferHeight);
+    //   drawWithKernal(kernalName);
+    //   gl.bindTexture(gl.TEXTURE_2D, textures[index % 2]);
+    // });
+
     gl.uniform1f(flipYLocation, -1);
-    // bind nothing to the frame buffer to indicate that we don't want to use one anymore
+
     setFrameBuffer(null, video.width, video.height);
-    drawWithKernal('normal');
+    // drawWithKernal('normal');
 
-    // compiler.useProgram('medianFilter');
-    // bindEverything();
-    // gl.bindTexture(gl.TEXTURE_2D, srcTexture);
-    // drawRaw(gl);
+    // compiler.useProgram('median');
+    // bindStuff();
 
-    tick(drawScene.bind(null, gl, srcTexture, video));
+    drawRaw();
+
+    tick(draw.bind(null, gl, srcTexture, video));
   }
 
-  drawScene(gl, srcTexture, video);
+  enableBlend();
+  draw(gl, srcTexture, video);
 }
 
-function drawRaw(gl, offset = 0, count = 6) {
+function drawRaw(offset = 0, count = 6) {
   gl.drawArrays(gl.TRIANGLES, offset, count);
 }
 
@@ -235,7 +228,7 @@ function computeKernalWeight(kernal) {
   return weight <= 0 ? 1 : weight;
 }
 
-function enableBlending(gl) {
+function enableBlend() {
   gl.enable(gl.BLEND);
   // this one gives the desired results. not 100 percent sure why!
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

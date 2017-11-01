@@ -24,6 +24,10 @@ const WebGl = (gl) => {
     },
 
     useProgram(name) {
+      if (currentProgram === programs[name]) {
+        return;
+      }
+
       currentProgram = programs[name];
       gl.useProgram(currentProgram);
     },

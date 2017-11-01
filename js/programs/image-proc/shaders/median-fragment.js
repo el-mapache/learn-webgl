@@ -20,7 +20,7 @@ export default `
 
   //Looks like 16 is too much for Windows!
   //16/32 is pretty good on Mac, 64 works but slow.
-  #define SORT_SIZE	8
+  #define SORT_SIZE	16
   #define halfSortSize SORT_SIZE / 2
 
   float sort[SORT_SIZE];
